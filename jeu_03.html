@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Jeu de localisation</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        .leaflet-popup-close-button {
+            display: none;
+            text-align: center;
+            }
+
+        #map {
+            height: 500px;
+        }
+        .barre-temps {
+            width: 100%;
+            height: 5px;
+            background-color: #0854E8;
+        }
+        #map {
+        cursor: pointer; /* Change le curseur en forme de croix */
+}
+
+        .question {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .numero-question {
+            color: #0854E8;
+        }
+        .centre-bouton {
+            text-align: center;
+        }
+
+
+
+        .leaflet-popup-content-wrapper {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+        }
+        #popupTempsEcoule .leaflet-popup-content-wrapper {
+          z-index: 1;
+}
+        .leaflet-popup-tip-container {
+            display: none;
+        }
+        .leaflet-popup-content {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        #btnRejouer {
+            background-color: #0854E8;  /* Couleur de fond bleue */
+            color: white;  /* Écriture blanche */
+            padding: 10px 20px;  /* Espacement autour du texte */
+            border: none;  /* Pas de bordure */
+            border-radius: 5px;  /* Coins arrondis */
+            cursor: pointer;  /* Change le curseur en main lorsqu'on passe dessus */
+            transition: background-color 0.3s;  /* Transition douce lors du changement de couleur */
+        }
+
+        #btnRejouer:hover {
+            background-color: #0647a6;  /* Couleur de fond un peu plus foncée lors du survol */
+        }
+
+        .leaflet-popup-content button {
+            background-color: #0854E8;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .leaflet-popup-content button:hover {
+            background-color: #0647a6;
+        }
+    </style>
+</head>
+<body>
+<div class="question">Où se trouve la commune de… ?</div>
+<div class="barre-temps"></div>
+<div id="map"></div>
+<div id="centreBouton" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none;z-index: 1000;">
+    <button id="btnRejouer">Rejouer</button>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+    let iconeBleu = L.icon({
+        iconUrl: 'marker_bleu.png',
+        iconSize: [48, 48],
+        iconAnchor: [24, 48],
+        popupAnchor: [0, -48]
+    });
+
+    let iconeVert = L.icon({
+        iconUrl: 'marker_vert.png',
+        iconSize: [48, 48],
+        iconAnchor: [24, 48],
+        popupAnchor: [0, -48]
+    });
+
+    let map = L.map('map').setView([50.6, 2.5], 8);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+    }).addTo(map);
+    let villes = [];
+    let index = 0;
+    let distanceTotale = 0;
+    let markerJoueur;
+    let markerReponse;
+    let ligneEntreMarqueurs;
+    let clicsActifs = true;
+
+
+
+    function melangerTableau(tableau) {
+        for (let i = tableau.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [tableau[i], tableau[j]] = [tableau[j], tableau[i]];
+        }
+    }
+
+    function demarrerBarreDeTemps() {
+        let barre = document.querySelector(".barre-temps");
+        let conteneur = barre.parentElement;
+        let largeurInitiale = conteneur.offsetWidth;
+        let width = largeurInitiale;
+        let dureeTotal = 10 * 1000; // 10 secondes en millisecondes
+        let intervalMiseAJour = 10; // intervalle de mise à jour en millisecondes
+        let decrement = largeurInitiale / (dureeTotal / intervalMiseAJour);
+
+        intervalId = setInterval(() => {
+            width -= decrement;
+            barre.style.width = width + "px";
+            if (width <= 0) {
+                clearInterval(intervalId);
+                barre.style.width = "0px";
+
+             let popupContent = '<p>Temps écoulé</p><button id="btnRejouerPopup">Rejouer</button>';
+            let popup = L.popup()
+                .setLatLng(map.getCenter())
+                .setContent(popupContent)
+                .openOn(map);
+
+            // Ajouter un gestionnaire d'événement au bouton Rejouer du popup
+            document.getElementById("btnRejouerPopup").addEventListener("click", function() {
+                map.closePopup(popup);
+                recommencerJeu();
+            });
+        }
+    }, intervalMiseAJour);
+}
+
+
+
+
+
+
+
+
+    $.get('villes.csv', function (data) {
+        let lines = data.split('\n');
+        lines.shift();
+        lines.forEach(line => {
+            let columns = line.split(';');
+            if (columns[1] && columns[13] && columns[12]) {
+                villes.push({nom: columns[1], lat: columns[13], long: columns[12]});
+            }
+        });
+        melangerTableau(villes);
+        afficherQuestion();
+    });
+
+    function afficherQuestion() {
+        if (index < villes.length && index < 10 && villes[index].nom !== undefined) {
+            document.querySelector(".question").innerHTML = `<span class="numero-question">${index + 1}/10</span> - Où se trouve la commune de ${villes[index].nom} ?`;
+            document.querySelector(".barre-temps").style.width = "100%";
+            demarrerBarreDeTemps();
+        } else {
+            finDeJeu();
+        }
+    }
+
+    function fermerPopupEtPasserAuSuivant() {
+        map.closePopup();
+        questionSuivante();
+    }
+
+    function questionSuivante() {
+        clearInterval(intervalId);
+        if (markerJoueur) {
+            map.removeLayer(markerJoueur);
+        }
+        if (markerReponse) {
+            map.removeLayer(markerReponse);
+        }
+        if (ligneEntreMarqueurs) {
+            map.removeLayer(ligneEntreMarqueurs);
+        }
+        index++;
+        afficherQuestion();
+    }
+
+    function finDeJeu() {
+        clearInterval(intervalId);
+        document.querySelector(".question").innerText = `Jeu terminé ! Distance totale : ${distanceTotale.toFixed(1)} km.`;
+        let btnRejouer = document.getElementById("btnRejouer");
+        btnRejouer.onclick = recommencerJeu;
+        document.getElementById("centreBouton").style.display = "block";
+
+        clicsActifs = false;  // Désactivez les clics ici
+    }
+
+    function recommencerJeu() {
+        melangerTableau(villes);
+        index = 0;
+        distanceTotale = 0;
+        document.getElementById("centreBouton").style.display = "none";
+        afficherQuestion();
+        clicsActifs = true;
+    }
+
+    map.on('click', function(e) {
+        if (!clicsActifs) return;
+        clearInterval(intervalId);
+        if (markerJoueur) {
+            map.removeLayer(markerJoueur);
+        }
+        markerJoueur = L.marker(e.latlng, {icon: iconeBleu}).addTo(map);
+        let reponseLat = parseFloat(villes[index].lat.replace(',', '.'));
+        let reponseLong = parseFloat(villes[index].long.replace(',', '.'));
+        markerReponse = L.marker([reponseLat, reponseLong], {icon: iconeVert}).addTo(map);
+        ligneEntreMarqueurs = L.polyline([e.latlng, [reponseLat, reponseLong]], {color: 'grey'}).addTo(map);
+        let distance = map.distance(e.latlng, [reponseLat, reponseLong]) / 1000;
+        distance = Math.round(distance * 10) / 10;
+        distanceTotale += distance;
+        let popupContent = `<p>Distance : ${distance} km</p><div class="centre-bouton"><button onclick="fermerPopupEtPasserAuSuivant()">Suivant</button></div>`;
+        markerJoueur.bindPopup(popupContent).openPopup();
+    });
+</script>
+</body>
+</html>
